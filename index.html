@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evaporador Veeco VE-401 — Modelo 3D</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@400;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0e17;
+    color: #d0d8e8;
+    font-family: 'Space Grotesk', sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  #canvas-container {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+  }
+
+  canvas { display: block; }
+
+  /* HUD overlay */
+  #hud {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  #title-block {
+    position: absolute;
+    top: 24px; left: 28px;
+    pointer-events: none;
+  }
+
+  #title-block h1 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 15px;
+    font-weight: 700;
+    color: #67e8f9;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  #title-block p {
+    font-size: 12px;
+    color: #5a6a80;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  #legend {
+    position: absolute;
+    bottom: 28px; left: 28px;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    color: #8899aa;
+  }
+
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  #controls-hint {
+    position: absolute;
+    bottom: 28px; right: 28px;
+    pointer-events: none;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: #3a4a5a;
+    text-align: right;
+    line-height: 1.6;
+  }
+
+  /* Toggle panel */
+  #toggle-panel {
+    position: absolute;
+    top: 24px; right: 28px;
+    pointer-events: all;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .toggle-btn {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid #1e3a5f;
+    color: #67e8f9;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 7px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s;
+    backdrop-filter: blur(8px);
+  }
+
+  .toggle-btn:hover {
+    background: rgba(30, 58, 95, 0.9);
+    border-color: #67e8f9;
+  }
+
+  .toggle-btn.off {
+    color: #3a4a5a;
+    border-color: #1a2535;
+  }
+</style>
+</head>
+<body>
+<div id="canvas-container">
+  <div id="hud">
+    <div id="title-block">
+      <h1>Evaporador Veeco VE-401</h1>
+      <p>Pantalla de molibdeno — vista esquemática</p>
+    </div>
+
+    <div id="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#b87333"></div>Vigas de cobre</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#d4d4d4"></div>Alambre de tungsteno</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff8c3a"></div>Cilindro interior naranja</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff6f61"></div>Cilindro ext. acero inox. (2 mitades)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#2a3a50"></div>Mampara (campana)</div>
+    </div>
+
+    <div id="controls-hint">
+      Arrastrar → rotar<br>
+      Scroll → zoom<br>
+      Click derecho → mover
+    </div>
+
+    <div id="toggle-panel">
+      <button class="toggle-btn" onclick="toggleGroup('copperGroup')">⬛ Vigas Cu</button>
+      <button class="toggle-btn" onclick="toggleGroup('tungstenGroup')">⬛ Alambre W</button>
+      <button class="toggle-btn" onclick="toggleGroup('steelCylGroup')">⬛ Cilindro Inox.</button>
+      <button class="toggle-btn" onclick="toggleGroup('outerCylGroup')">⬛ Cilindro ext.</button>
+      <button class="toggle-btn" onclick="toggleGroup('bellJarGroup')">⬛ Mampara</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// =====================================================================
+// Scene setup
+// =====================================================================
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0e17);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(14, 10, 18);
+camera.lookAt(0, 3, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+
+// =====================================================================
+// Lights
+// =====================================================================
+const ambientLight = new THREE.AmbientLight(0x334455, 0.6);
+scene.add(ambientLight);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(10, 15, 10);
+dirLight.castShadow = true;
+scene.add(dirLight);
+
+const pointLight = new THREE.PointLight(0x67e8f9, 0.4, 40);
+pointLight.position.set(0, 8, 0);
+scene.add(pointLight);
+
+const rimLight = new THREE.DirectionalLight(0x4488cc, 0.3);
+rimLight.position.set(-8, 5, -8);
+scene.add(rimLight);
+
+// =====================================================================
+// Materials
+// =====================================================================
+const copperMat = new THREE.MeshPhysicalMaterial({
+  color: 0xb87333, metalness: 0.9, roughness: 0.25,
+  clearcoat: 0.3, clearcoatRoughness: 0.2
+});
+
+const tungstenMat = new THREE.MeshPhysicalMaterial({
+  color: 0xd4d4d4, metalness: 0.95, roughness: 0.15,
+  clearcoat: 0.4
+});
+
+// (Material moScreenMat eliminado — ya no hay cilindros concéntricos de Mo)
+
+const outerCylMat = new THREE.MeshPhysicalMaterial({
+  color: 0xff6f61, metalness: 0.6, roughness: 0.3,
+  transparent: true, opacity: 0.78,
+  side: THREE.DoubleSide, emissive: 0x331111, emissiveIntensity: 0.3
+});
+
+const steelMat = new THREE.MeshPhysicalMaterial({
+  color: 0xff8c3a, metalness: 0.65, roughness: 0.3,
+  transparent: true, opacity: 0.7,
+  side: THREE.DoubleSide, emissive: 0x4a1f08, emissiveIntensity: 0.35,
+  clearcoat: 0.4, clearcoatRoughness: 0.25
+});
+
+const bellJarMat = new THREE.MeshPhysicalMaterial({
+  color: 0x2a3a50, metalness: 0.1, roughness: 0.15,
+  transparent: true, opacity: 0.18,
+  side: THREE.DoubleSide
+});
+
+const baseMat = new THREE.MeshPhysicalMaterial({
+  color: 0x1a2535, metalness: 0.8, roughness: 0.4
+});
+
+// =====================================================================
+// Dimensions (parametric)
+// =====================================================================
+const beamWidth = 0.4;
+const beamDepth = 0.4;
+const beamHeight = 6;
+const beamSeparation = 5;     // distance between beam centers
+const wireRadius = 0.1;       // slightly thicker for visibility
+const wireTopY = beamHeight;
+const wireBowlBottomY = 2.0;
+const wireBowlWidth = 2.5;
+
+// Screen params
+const screenHeight = 5.5;
+const numConcentricCylinders = 3;
+const maxScreenRadius = beamSeparation / 2 * 1.25; // a bit bigger
+const minScreenRadius = maxScreenRadius * 0.4;     // a bit bigger inner too
+const spacing = (maxScreenRadius - minScreenRadius) / (numConcentricCylinders - 1);
+
+// Bell jar
+const bellJarRadius = 7;
+const bellJarHeight = 14;
+
+// Outer cylinder: sits between mampara wall and where the beams start
+// Beams start at bellJarRadius - 0.5 from center, so outer cyl is between that and belljar
+const outerCylRadius = bellJarRadius - 0.8;
+
+// =====================================================================
+// Groups
+// =====================================================================
+const copperGroup = new THREE.Group(); copperGroup.name = 'copperGroup';
+const tungstenGroup = new THREE.Group(); tungstenGroup.name = 'tungstenGroup';
+const steelCylGroup = new THREE.Group(); steelCylGroup.name = 'steelCylGroup';
+const outerCylGroup = new THREE.Group(); outerCylGroup.name = 'outerCylGroup';
+const bellJarGroup = new THREE.Group(); bellJarGroup.name = 'bellJarGroup';
+
+// =====================================================================
+// Base plate
+// =====================================================================
+const baseGeom = new THREE.CylinderGeometry(bellJarRadius + 0.5, bellJarRadius + 0.8, 0.5, 64);
+const baseMesh = new THREE.Mesh(baseGeom, baseMat);
+baseMesh.position.y = -0.25;
+baseMesh.receiveShadow = true;
+scene.add(baseMesh);
+
+// =====================================================================
+// Copper beams (vigas) — horizontal, near the floor, with gap at center
+// Each beam goes from near the bell jar wall to just outside the smallest cylinder
+// =====================================================================
+const beamY = 0.3; // very close to the floor
+const beamInnerEnd = minScreenRadius * 0.45; // beams reach well inside smallest cylinder
+const beamOuterEnd = outerCylRadius - 0.3;    // stops inside the outer cylinder, doesn't reach mampara
+const beamLength = beamOuterEnd - beamInnerEnd;
+
+function createHorizontalBeam(angle) {
+  const geom = new THREE.BoxGeometry(beamLength, beamDepth, beamWidth);
+  const mesh = new THREE.Mesh(geom, copperMat);
+  // Center of beam is midpoint between inner and outer end
+  const centerDist = (beamInnerEnd + beamOuterEnd) / 2;
+  const cx = Math.cos(angle) * centerDist;
+  const cz = Math.sin(angle) * centerDist;
+  mesh.position.set(cx, beamY, cz);
+  mesh.rotation.y = -angle;
+  mesh.castShadow = true;
+  return mesh;
+}
+
+// Two beams on opposite sides (180° apart) → pokeball line from top
+copperGroup.add(createHorizontalBeam(0));           // +X side
+copperGroup.add(createHorizontalBeam(Math.PI));     // -X side
+
+scene.add(copperGroup);
+
+// =====================================================================
+// Tungsten wire (filament) — straight horizontal, inside smallest cylinder
+// Spans the gap between the two beam inner ends
+// =====================================================================
+const wireY = 0.3; // same height as the beams, near floor
+const wireLength = minScreenRadius * 1.5; // fully enclosed inside smallest cylinder
+const wireStraightGeom = new THREE.CylinderGeometry(wireRadius, wireRadius, wireLength, 16);
+const wireMesh = new THREE.Mesh(wireStraightGeom, tungstenMat);
+wireMesh.rotation.z = Math.PI / 2; // lay it horizontal along X
+wireMesh.position.set(0, wireY, 0);
+wireMesh.castShadow = true;
+tungstenGroup.add(wireMesh);
+
+scene.add(tungstenGroup);
+
+// =====================================================================
+// Inner cylinder — naranja, uniforme (una sola pieza)
+// =====================================================================
+{
+  const radius = minScreenRadius;
+  const geom = new THREE.CylinderGeometry(radius, radius, screenHeight, 64, 1, true);
+  const cyl = new THREE.Mesh(geom, steelMat.clone());
+  cyl.position.y = screenHeight / 2;
+  cyl.castShadow = true;
+  steelCylGroup.add(cyl);
+
+  const ringGeom = new THREE.TorusGeometry(radius, 0.04, 8, 64);
+  const ringMesh = new THREE.Mesh(ringGeom, steelMat);
+  ringMesh.rotation.x = Math.PI / 2;
+  ringMesh.position.y = screenHeight;
+  steelCylGroup.add(ringMesh);
+
+  const ringMesh2 = ringMesh.clone();
+  ringMesh2.position.y = 0;
+  steelCylGroup.add(ringMesh2);
+}
+
+scene.add(steelCylGroup);
+
+// =====================================================================
+// (Cilindros concéntricos de Mo — eliminados)
+// =====================================================================
+
+// =====================================================================
+// Outer cylinder — TWO half-cylinders (assemblable, real-object hint)
+// Cada mitad cubre el arco [-arc/2, +arc/2].
+// IMPORTANTE: three.js CylinderGeometry usa la convención
+//   x(θ) = r·sin(θ),  z(θ) = r·cos(θ)
+// (no la convención matemática estándar). Todas las bridas, pernos y anillos
+// se alinean usando exactamente esa misma fórmula.
+// =====================================================================
+{
+  const radius = outerCylRadius;
+  const cylH = screenHeight * 1.05;
+  const gapAngle = 0.08;                  // separación visible en cada costura
+  const arc = Math.PI - gapAngle;
+  const flangeWidth = 0.20;
+  const flangeDepth = 0.07;
+  const flangeOffset = 0.015;
+
+  function buildOuterHalf(rotationY, hueShift) {
+    const halfGroup = new THREE.Group();
+    const mat = outerCylMat.clone();
+    if (hueShift) mat.color.offsetHSL(0, 0, 0.04);
+
+    // --- Cáscara curva: arco de -arc/2 a +arc/2 ---
+    const shellGeom = new THREE.CylinderGeometry(
+      radius, radius, cylH, 48, 1, true,
+      -arc / 2, arc
+    );
+    const shell = new THREE.Mesh(shellGeom, mat);
+    shell.position.y = cylH / 2;
+    shell.castShadow = true;
+    halfGroup.add(shell);
+
+    // (Anillos superior e inferior eliminados — el cilindro queda limpio)
+
+    // --- Bridas verticales en cada costura (±arc/2) ---
+    const boltMat = new THREE.MeshPhysicalMaterial({
+      color: 0xdde6f2, metalness: 0.9, roughness: 0.3
+    });
+
+    for (const sideAngle of [arc / 2, -arc / 2]) {
+      // Misma convención que el shell: x = r·sin(θ), z = r·cos(θ)
+      const rFlange = radius + flangeOffset + flangeDepth / 2;
+      const cx = Math.sin(sideAngle) * rFlange;
+      const cz = Math.cos(sideAngle) * rFlange;
+
+      // Vector unitario radial hacia afuera en ese punto
+      const radialX = Math.sin(sideAngle);
+      const radialZ = Math.cos(sideAngle);
+
+      // BoxGeometry: x=grosor radial, y=altura, z=ancho tangencial.
+      // Quiero que el +X local apunte radialmente hacia (sin sideAngle, cos sideAngle).
+      // Aplicando rotation.y = β a (1,0,0) en three.js da (cos β, 0, −sin β).
+      // Igualando con (sin s, cos s) → β = sideAngle − π/2.
+      const flangeGeom = new THREE.BoxGeometry(flangeDepth, cylH, flangeWidth);
+      const flange = new THREE.Mesh(flangeGeom, mat);
+      flange.position.set(cx, cylH / 2, cz);
+      flange.rotation.y = sideAngle - Math.PI / 2;
+      halfGroup.add(flange);
+
+      // --- Pernos: cilindros cortos con eje radial, centrados en la brida ---
+      // Un cilindro three.js está orientado con su eje en +Y local.
+      // Aplicando Rz(+π/2): el eje pasa a -X local.
+      // Aplicando luego Ry(sideAngle + π/2) con orden YXZ: el eje queda en
+      // (sin(sideAngle), 0, cos(sideAngle)) — exactamente la dirección radial.
+      const numBolts = 4;
+      for (let k = 0; k < numBolts; k++) {
+        const t = (k + 0.5) / numBolts;
+        const boltY = cylH * t;
+        const boltGeom = new THREE.CylinderGeometry(0.05, 0.05, flangeDepth + 0.06, 12);
+        const bolt = new THREE.Mesh(boltGeom, boltMat);
+        bolt.rotation.order = 'YXZ';
+        bolt.rotation.y = sideAngle + Math.PI / 2;
+        bolt.rotation.z = Math.PI / 2;
+        bolt.position.set(cx, boltY, cz);
+        halfGroup.add(bolt);
+      }
+    }
+
+    halfGroup.rotation.y = rotationY;
+    return halfGroup;
+  }
+
+  outerCylGroup.add(buildOuterHalf(0, false));
+  outerCylGroup.add(buildOuterHalf(Math.PI, true));
+}
+
+// Las vigas de Cu están a lo largo del eje X (ángulos 0 y π).
+// Rotamos todo el grupo 90° para que las costuras (originalmente sobre el eje X)
+// queden sobre el eje Z, perpendiculares a las vigas.
+outerCylGroup.rotation.y = Math.PI / 2;
+
+scene.add(outerCylGroup);
+
+// =====================================================================
+// Bell jar (mampara — dome shape)
+// =====================================================================
+// Cylindrical part
+const jarCylGeom = new THREE.CylinderGeometry(bellJarRadius, bellJarRadius, bellJarHeight * 0.7, 64, 1, true);
+const jarCyl = new THREE.Mesh(jarCylGeom, bellJarMat);
+jarCyl.position.y = bellJarHeight * 0.35;
+bellJarGroup.add(jarCyl);
+
+// Dome top
+const domeGeom = new THREE.SphereGeometry(bellJarRadius, 64, 32, 0, Math.PI * 2, 0, Math.PI / 2);
+const domeMesh = new THREE.Mesh(domeGeom, bellJarMat);
+domeMesh.position.y = bellJarHeight * 0.7;
+bellJarGroup.add(domeMesh);
+
+scene.add(bellJarGroup);
+
+// =====================================================================
+// Grid floor
+// =====================================================================
+const gridHelper = new THREE.GridHelper(20, 30, 0x1a2a3a, 0x111a25);
+gridHelper.position.y = 0;
+scene.add(gridHelper);
+
+// =====================================================================
+// Simple orbit controls (manual implementation)
+// =====================================================================
+let isDragging = false;
+let isPanning = false;
+let prevMouse = { x: 0, y: 0 };
+let spherical = { theta: 0.85, phi: 1.1, radius: 24 };
+
+function updateCamera() {
+  camera.position.x = spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+  camera.position.y = spherical.radius * Math.cos(spherical.phi);
+  camera.position.z = spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+  camera.lookAt(0, 3, 0);
+}
+updateCamera();
+
+const cvs = renderer.domElement;
+cvs.addEventListener('mousedown', e => {
+  if (e.button === 0) isDragging = true;
+  if (e.button === 2) isPanning = true;
+  prevMouse = { x: e.clientX, y: e.clientY };
+});
+cvs.addEventListener('mousemove', e => {
+  if (!isDragging && !isPanning) return;
+  const dx = e.clientX - prevMouse.x;
+  const dy = e.clientY - prevMouse.y;
+  if (isDragging) {
+    spherical.theta -= dx * 0.008;
+    spherical.phi = Math.max(0.2, Math.min(Math.PI - 0.2, spherical.phi + dy * 0.008));
+  }
+  prevMouse = { x: e.clientX, y: e.clientY };
+  updateCamera();
+});
+cvs.addEventListener('mouseup', () => { isDragging = false; isPanning = false; });
+cvs.addEventListener('mouseleave', () => { isDragging = false; isPanning = false; });
+cvs.addEventListener('wheel', e => {
+  spherical.radius = Math.max(8, Math.min(50, spherical.radius + e.deltaY * 0.02));
+  updateCamera();
+});
+cvs.addEventListener('contextmenu', e => e.preventDefault());
+
+// Touch support
+cvs.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    isDragging = true;
+    prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+});
+cvs.addEventListener('touchmove', e => {
+  if (!isDragging || e.touches.length !== 1) return;
+  const dx = e.touches[0].clientX - prevMouse.x;
+  const dy = e.touches[0].clientY - prevMouse.y;
+  spherical.theta -= dx * 0.008;
+  spherical.phi = Math.max(0.2, Math.min(Math.PI - 0.2, spherical.phi + dy * 0.008));
+  prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  updateCamera();
+  e.preventDefault();
+}, { passive: false });
+cvs.addEventListener('touchend', () => { isDragging = false; });
+
+// =====================================================================
+// Toggle visibility
+// =====================================================================
+const groups = { copperGroup, tungstenGroup, steelCylGroup, outerCylGroup, bellJarGroup };
+
+function toggleGroup(name) {
+  const g = groups[name];
+  g.visible = !g.visible;
+  // Update button style
+  const btns = document.querySelectorAll('.toggle-btn');
+  btns.forEach(btn => {
+    if (btn.getAttribute('onclick').includes(name)) {
+      btn.classList.toggle('off', !g.visible);
+    }
+  });
+}
+
+// =====================================================================
+// Animation loop (slow auto-rotate + glow pulse)
+// =====================================================================
+let autoRotate = true;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  if (autoRotate && !isDragging) {
+    spherical.theta += 0.002;
+    updateCamera();
+  }
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+// =====================================================================
+// Resize
+// =====================================================================
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
